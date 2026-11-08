@@ -1,426 +1,424 @@
-# Tugas-3-ADMINISTRASI-SERVER---STSI4302
+# Praktikum Administrasi Server: FTP Server pada CentOS Stream 10
 
-# Praktikum FTP Server Menggunakan vsftpd pada CentOS Stream 10
+Dokumentasi Tugas Tutorial Online 3 mata kuliah **Administrasi Server (STSI4302)**. Praktikum ini membahas instalasi, konfigurasi, dan pengujian FTP Server menggunakan **vsftpd** pada CentOS Stream 10 dengan Windows 11 sebagai client.
 
 ## 1. Pendahuluan
 
-FTP (*File Transfer Protocol*) merupakan protokol jaringan yang digunakan untuk melakukan pertukaran file antara komputer client dan server. Dengan menggunakan FTP, pengguna dapat mengirimkan maupun mengambil file melalui jaringan menggunakan layanan FTP Server.
+FTP (*File Transfer Protocol*) merupakan protokol jaringan yang digunakan untuk melakukan pertukaran file antara komputer client dan server. Pada praktikum ini, CentOS Stream 10 digunakan sebagai server, sedangkan Windows 11 digunakan sebagai client. Kedua perangkat dihubungkan menggunakan jaringan Host-Only pada Oracle VM VirtualBox.
 
-Praktikum ini bertujuan untuk melakukan instalasi dan konfigurasi FTP Server menggunakan layanan **vsftpd** pada sistem operasi CentOS Stream 10. Dalam praktik ini, CentOS Stream 10 digunakan sebagai server, sedangkan Windows 11 digunakan sebagai client. Keduanya dihubungkan menggunakan jaringan Host-Only pada VirtualBox.
-
-Selain instalasi dan konfigurasi layanan FTP, praktikum ini juga mencakup pengaturan firewall, hak akses direktori, dan SELinux. Pengujian dilakukan dengan mengakses FTP Server melalui Windows, mengirimkan file TXT dari Windows ke CentOS, membuat file TXT pada CentOS untuk dibaca melalui Windows, serta mengirimkan dan membuka file gambar pada server.
+Praktikum mencakup instalasi dan konfigurasi vsftpd, pengaturan firewall, akun FTP, hak akses direktori, serta SELinux. Pengujian dilakukan dengan login FTP, mengirim file TXT dari Windows ke CentOS, mengirim file foto melalui Windows File Explorer, dan membuat file TXT pada CentOS untuk dibaca melalui Windows.
 
 ## 2. Persiapan Awal
 
-Sebelum melakukan instalasi dan konfigurasi, berikut perangkat dan pengaturan yang digunakan dalam praktikum:
+### Lingkungan praktikum
 
 | Komponen | Keterangan |
 |---|---|
+| Mata kuliah | Administrasi Server (STSI4302) |
 | Sistem operasi server | CentOS Stream 10 |
+| Layanan FTP | vsftpd |
 | Sistem operasi client | Windows 11 |
 | Virtualisasi | Oracle VM VirtualBox |
-| FTP Server | vsftpd versi 3.0.5 |
-| Adapter 1 | NAT |
-| Adapter 2 | Host-Only Adapter |
-| IP Address CentOS | `192.168.56.102` |
-| IP Address Windows | `192.168.56.1` |
+| Adapter jaringan | NAT dan Host-Only |
+| Interface NAT | `enp0s3` |
+| Interface Host-Only | `enp0s8` |
+| IP CentOS Stream 10 | `192.168.56.103` |
+| IP Windows Host-Only | `192.168.56.1` |
 | Akun FTP | `ftpuser` |
 | Direktori utama FTP | `/var/www/html` |
 | Direktori upload | `/var/www/html/upload` |
 
-Adapter NAT digunakan agar mesin virtual dapat terhubung ke internet, sedangkan Host-Only Adapter digunakan agar Windows sebagai client dapat berkomunikasi langsung dengan CentOS sebagai server.
+Alamat IP tersebut mengikuti konfigurasi mesin virtual pada praktikum ini. Jika diterapkan pada lingkungan lain, sesuaikan alamat IP dengan hasil konfigurasi jaringan masing-masing.
 
-## 3. Langkah Instalasi dan Konfigurasi FTP Server
+### Memeriksa sistem operasi
 
-### 3.1 Update Sistem
+```bash
+cat /etc/os-release
+```
 
-Langkah pertama adalah memperbarui sistem operasi CentOS Stream 10 agar paket yang digunakan berada dalam kondisi terbaru.
+Perintah ini digunakan untuk mengetahui sistem operasi yang digunakan.
 
-Karena praktikum ini menggunakan CentOS Stream 10, perintah yang digunakan adalah `dnf` sebagai pengganti `yum` pada CentOS 7.
+### Memeriksa alamat IPv4
+
+```bash
+ip -4 a
+```
+
+Perintah ini menampilkan alamat IPv4 pada perangkat jaringan. Adapter Host-Only `enp0s8` digunakan sebagai jalur komunikasi antara Windows dan CentOS.
+
+## 3. Instalasi dan Konfigurasi FTP Server
+
+### 3.1 Update sistem
 
 ```bash
 dnf update -y
 ```
 
-Setelah perintah dijalankan, tunggu sampai proses pembaruan selesai.
+Perintah `dnf update` digunakan untuk memeriksa dan memperbarui paket pada CentOS Stream 10. Opsi `-y` menyetujui konfirmasi pembaruan secara otomatis. Pada CentOS Stream 10 digunakan `dnf` sebagai pengelola paket.
 
 ### 3.2 Instalasi vsftpd
-
-Setelah sistem diperbarui, langkah selanjutnya adalah memasang aplikasi vsftpd yang akan digunakan sebagai FTP Server.
 
 ```bash
 dnf install vsftpd -y
 ```
 
-Jika instalasi sudah selesai, jalankan layanan FTP dengan perintah:
+Setelah paket tersedia, jalankan dan aktifkan layanan:
 
 ```bash
 systemctl start vsftpd
-```
-
-Agar layanan FTP otomatis aktif ketika CentOS dinyalakan, jalankan:
-
-```bash
 systemctl enable vsftpd
-```
-
-Kemudian periksa apakah layanan sudah berjalan:
-
-```bash
 systemctl status vsftpd
 ```
 
-Jika muncul keterangan `active (running)`, berarti layanan vsftpd sudah berhasil dijalankan.
+- `start` menjalankan layanan.
+- `enable` membuat layanan aktif otomatis ketika sistem dinyalakan.
+- `status` memeriksa kondisi layanan. Status `active (running)` menunjukkan layanan sedang berjalan.
 
-### 3.3 Konfigurasi Firewall
+### 3.3 Konfigurasi firewall
 
-Selanjutnya, firewall diatur agar komputer Windows dapat terhubung dengan FTP Server.
-
-Pertama, izinkan koneksi melalui port 21 yang digunakan oleh FTP:
+Izinkan port 21 yang digunakan FTP:
 
 ```bash
 firewall-cmd --permanent --add-port=21/tcp
 ```
 
-Kemudian izinkan layanan FTP pada firewall:
+Izinkan layanan FTP:
 
 ```bash
 firewall-cmd --permanent --add-service=ftp
 ```
 
-Karena konfigurasi menggunakan passive mode untuk proses transfer data, tambahkan rentang port berikut:
+Izinkan rentang port untuk koneksi passive mode:
 
 ```bash
 firewall-cmd --permanent --add-port=10000-10100/tcp
 ```
 
-Setelah semua aturan ditambahkan, terapkan perubahan dengan perintah:
+Terapkan aturan firewall:
 
 ```bash
 firewall-cmd --reload
 ```
 
-Untuk memastikan pengaturan sudah diterapkan, jalankan:
+Port 21 digunakan untuk koneksi kontrol FTP, sedangkan rentang 10000–10100 digunakan untuk koneksi data passive mode sesuai konfigurasi vsftpd.
 
-```bash
-firewall-cmd --list-all
-```
+### 3.4 Konfigurasi file vsftpd
 
-Pada hasil pemeriksaan, pastikan layanan FTP dan port yang diperlukan sudah tercantum.
-
-### 3.4 Konfigurasi File vsftpd
-
-Setelah firewall diatur, langkah berikutnya adalah menyesuaikan konfigurasi FTP Server.
-
-Buka file konfigurasi menggunakan perintah:
+Buka file konfigurasi:
 
 ```bash
 nano /etc/vsftpd/vsftpd.conf
 ```
 
-Di dalam file tersebut, sesuaikan pengaturan berikut:
+Parameter yang digunakan:
 
 ```ini
 anonymous_enable=NO
 local_enable=YES
 write_enable=YES
+
 chroot_local_user=YES
 chroot_list_enable=YES
 chroot_list_file=/etc/vsftpd/chroot_list
+
 local_root=/var/www/html
+
 pasv_enable=YES
 pasv_min_port=10000
 pasv_max_port=10100
 ```
 
-Pengaturan tersebut digunakan agar FTP hanya dapat diakses oleh pengguna yang memiliki akun, mengizinkan pengguna melakukan upload file, dan membatasi akses pengguna pada direktori FTP yang telah ditentukan.
+Penjelasan parameter:
 
-Passive mode juga diaktifkan dengan menentukan rentang port 10000 sampai 10100 agar proses pertukaran data dapat berjalan.
+| Parameter | Fungsi |
+|---|---|
+| `anonymous_enable=NO` | Menonaktifkan login anonim. |
+| `local_enable=YES` | Mengizinkan pengguna lokal Linux login ke FTP Server. |
+| `write_enable=YES` | Mengizinkan perintah FTP yang berkaitan dengan penulisan atau perubahan file, sesuai hak akses Linux dan SELinux. |
+| `chroot_local_user=YES` | Membatasi ruang akses pengguna lokal melalui mekanisme chroot. |
+| `chroot_list_enable=YES` | Mengaktifkan penggunaan daftar pengecualian chroot. |
+| `chroot_list_file=/etc/vsftpd/chroot_list` | Menentukan lokasi file daftar pengecualian chroot. |
+| `local_root=/var/www/html` | Menentukan direktori awal pengguna lokal setelah login FTP. |
+| `pasv_enable=YES` | Mengaktifkan passive mode. |
+| `pasv_min_port=10000` | Menentukan batas bawah rentang port passive mode. |
+| `pasv_max_port=10100` | Menentukan batas atas rentang port passive mode. |
 
-Setelah selesai mengubah konfigurasi, simpan file dengan menekan `Ctrl + O`, tekan Enter, lalu keluar menggunakan `Ctrl + X`.
+**Memeriksa file chroot_list**
 
-Selanjutnya, siapkan file daftar pengecualian chroot:
+Pada mesin praktikum, file `/etc/vsftpd/chroot_list` sudah tersedia dari konfigurasi sebelumnya. Oleh karena itu, keberadaannya diperiksa menggunakan:
+
+```bash
+ls -l /etc/vsftpd/chroot_list
+```
+
+Jika file belum tersedia pada sistem lain, file kosong dapat dibuat dengan:
 
 ```bash
 touch /etc/vsftpd/chroot_list
 ```
 
-Pada praktikum ini, akun `ftpuser` tidak dimasukkan ke dalam daftar tersebut agar tetap berada dalam pembatasan direktori FTP.
+Dengan `chroot_local_user=YES`, pengguna yang tercantum dalam daftar tersebut menjadi pengecualian dari pembatasan chroot. Karena itu, akun `ftpuser` tidak dimasukkan ke dalam daftar agar tetap dibatasi.
 
-### 3.5 Membuat User FTP
+Setelah memeriksa dan menyesuaikan parameter, simpan file Nano dengan menekan `Ctrl + O`, lalu `Enter`, kemudian `Ctrl + X`.
 
-Setelah konfigurasi vsftpd selesai, langkah berikutnya adalah membuat akun yang nantinya digunakan untuk login ke FTP Server.
+### 3.5 Membuat atau memeriksa user FTP
 
-Buat akun dengan perintah:
-
-```bash
-useradd -m -s /sbin/nologin ftpuser
-```
-
-Kemudian buat password untuk akun tersebut:
-
-```bash
-passwd ftpuser
-```
-
-Masukkan password yang akan digunakan ketika login dari Windows.
-
-Untuk memastikan akun sudah berhasil dibuat, jalankan:
+Akun FTP yang digunakan adalah `ftpuser`. Periksa keberadaan akun:
 
 ```bash
 id ftpuser
 ```
 
-Kemudian periksa pengaturan shell pengguna:
+Jika akun belum tersedia, buat akun menggunakan:
 
 ```bash
-getent passwd ftpuser
+useradd -m -s /sbin/nologin ftpuser
 ```
 
-Pastikan bagian akhir hasil pemeriksaan menunjukkan `/sbin/nologin`.
+Kemudian atur kata sandinya:
 
-Dengan pengaturan tersebut, akun `ftpuser` dapat digunakan untuk mengakses layanan FTP tanpa memberikan akses login terminal secara langsung.
+```bash
+passwd ftpuser
+```
 
-### 3.6 Mengatur Hak Akses Direktori
+Pada mesin virtual yang digunakan dalam praktikum ini, akun `ftpuser` sudah tersedia dari konfigurasi sebelumnya sehingga akun tersebut digunakan kembali. Pembuatan akun tidak perlu diulang apabila akun sudah ada.
 
-Berikutnya, kita menyiapkan direktori yang akan digunakan sebagai tempat penyimpanan file FTP.
+### 3.6 Mengatur hak akses direktori
 
-Buat direktori utama beserta folder upload:
+Buat direktori untuk menyimpan file hasil transfer:
 
 ```bash
 mkdir -p /var/www/html/upload
 ```
 
-Setelah direktori dibuat, atur agar direktori utama tetap dimiliki oleh root:
-
-```bash
-chown root:root /var/www/html
-chmod 755 /var/www/html
-```
-
-Kemudian berikan kepemilikan folder upload kepada akun FTP:
+Berikan kepemilikan direktori kepada akun FTP:
 
 ```bash
 chown ftpuser:ftpuser /var/www/html/upload
+```
+
+Atur hak akses direktori:
+
+```bash
 chmod 755 /var/www/html/upload
 ```
 
-Periksa hasilnya menggunakan:
+Periksa hasil pengaturan:
 
 ```bash
-ls -ld /var/www/html
-ls -ld /var/www/html/upload
+ls -ld /var/www/html /var/www/html/upload
 ```
 
-Pada pengaturan ini, direktori utama tetap dimiliki oleh root, sedangkan folder upload dimiliki oleh `ftpuser`. Tujuannya agar pengguna FTP dapat mengirimkan file ke folder upload tanpa memiliki hak untuk mengubah direktori utama.
+Direktori utama `/var/www/html` tetap dimiliki `root`, sedangkan direktori `/var/www/html/upload` dimiliki `ftpuser`. Hak akses `755` memberikan pemilik hak membaca, menulis, dan memasuki direktori, sedangkan grup dan pengguna lainnya memiliki hak membaca dan memasuki direktori tanpa hak menulis.
 
-Pengaturan ini merupakan penyesuaian dari contoh `chown -R` pada panduan praktikum agar sesuai dengan pembatasan chroot yang digunakan.
+Pengaturan ini memungkinkan `ftpuser` mengirim file ke direktori `upload` tanpa memiliki hak untuk menulis langsung pada direktori utama `/var/www/html`. Perintah menggunakan alamat direktori lengkap sehingga tidak perlu berpindah direktori dengan `cd` terlebih dahulu.
 
 ### 3.7 Penyesuaian SELinux
 
-Pada CentOS Stream 10 terdapat SELinux yang membantu membatasi akses layanan terhadap file dan direktori. Oleh karena itu, pengaturannya perlu disesuaikan agar FTP Server dapat membaca direktori dan menerima file yang diunggah.
-
-Pertama, periksa status SELinux:
+Periksa status SELinux:
 
 ```bash
 getenforce
 ```
 
-Selanjutnya, pastikan perintah `semanage` tersedia. Jika belum, pasang paket pendukung berikut:
+Pada praktikum ini, SELinux dipertahankan dalam mode `Enforcing`.
+
+Periksa konteks keamanan direktori:
+
+```bash
+ls -Zd /var/www/html /var/www/html/upload
+```
+
+Konteks yang digunakan:
+
+- `/var/www/html` menggunakan `public_content_t`.
+- `/var/www/html/upload` menggunakan `public_content_rw_t`.
+
+Aturan konteks kedua direktori sudah tersedia dari konfigurasi sebelumnya. Oleh karena itu, pada pelaksanaan praktikum ini aturan tidak dibuat ulang menggunakan `semanage fcontext`.
+
+**Perintah alternatif jika aturan konteks belum tersedia pada sistem:**
+
+Jika perintah `semanage` belum tersedia, pasang paket pendukung:
 
 ```bash
 dnf install policycoreutils-python-utils -y
 ```
 
-Atur konteks SELinux pada direktori utama FTP beserta isinya:
+Atur konteks direktori utama:
 
 ```bash
-semanage fcontext -a -t public_content_t '/var/www/html(/.*)?'
+semanage fcontext -a -t public_content_t '/var/www/html'
 ```
 
-Kemudian atur konteks khusus untuk folder upload:
+Atur konteks direktori upload:
 
 ```bash
 semanage fcontext -a -t public_content_rw_t '/var/www/html/upload(/.*)?'
 ```
 
-Terapkan pengaturan tersebut:
+Setelah direktori upload tersedia, terapkan aturan konteks yang telah terdaftar:
 
 ```bash
 restorecon -Rv /var/www/html
 ```
 
-Setelah itu, aktifkan pengaturan SELinux yang diperlukan untuk akses tulis FTP:
+Periksa kembali konteks direktori:
 
 ```bash
-setsebool -P ftpd_anon_write on
+ls -Zd /var/www/html /var/www/html/upload
 ```
 
-Pengaturan ini dilakukan agar akses FTP terhadap direktori sesuai dengan kebijakan SELinux tanpa harus menonaktifkan SELinux.
+Periksa Boolean SELinux:
 
-### 3.8 Restart Layanan
+```bash
+getsebool ftpd_anon_write
+```
 
-Setelah seluruh konfigurasi selesai, jalankan ulang layanan vsftpd agar perubahan yang telah dilakukan dapat diterapkan.
+Pada sistem yang digunakan, Boolean tersebut telah bernilai `on`. SELinux tetap dipertahankan aktif dan tidak dinonaktifkan. Hak akses Linux dan konteks SELinux perlu sesuai agar layanan FTP dapat mengakses direktori menurut kebijakan keamanan.
+
+### 3.8 Restart layanan
+
+Setelah konfigurasi selesai, jalankan ulang layanan:
 
 ```bash
 systemctl restart vsftpd
 ```
 
-Kemudian periksa kembali status layanan:
+Periksa status layanan:
 
 ```bash
 systemctl status vsftpd
 ```
 
-Jika status menunjukkan `active (running)`, berarti layanan FTP Server sudah berjalan setelah konfigurasi dilakukan.
+Status `active (running)` menunjukkan layanan vsftpd sedang berjalan.
 
-## 4. Pengujian FTP
+## 4. Pengujian FTP Server
 
-### 4.1 Mengakses FTP Server dari Windows
+Pengujian dilakukan dari Windows 11 sebagai client dengan alamat server `192.168.56.103`.
 
-Setelah FTP Server siap, selanjutnya dilakukan pengujian dari komputer Windows sebagai client.
+### 4.1 Menguji koneksi dari Windows ke CentOS
 
-Pertama, buka File Explorer pada Windows. Pada bagian address bar, masukkan alamat FTP Server menggunakan IP Host-Only CentOS.
-
-```text
-ftp://192.168.56.102
-```
-
-Setelah alamat dibuka, masukkan username `ftpuser` dan password yang telah dibuat sebelumnya.
-
-Jika berhasil login, direktori FTP akan tampil pada File Explorer. Untuk masuk ke folder upload, buka alamat:
-
-```text
-ftp://192.168.56.102/upload/
-```
-
-### 4.2 Pengujian File TXT dari Windows ke CentOS
-
-Untuk menguji pengiriman file dari Windows ke server, pertama buat sebuah file teks pada Windows.
-
-Buka PowerShell dan jalankan:
+Buka Windows PowerShell dan jalankan:
 
 ```powershell
-"Ini adalah file pengujian FTP yang dibuat di Windows dan dikirim ke server CentOS Stream 10." | Set-Content "$env:USERPROFILE\Documents\uji-windows.txt"
+Test-NetConnection 192.168.56.103 -Port 21
 ```
 
-Setelah file dibuat, kirimkan ke folder upload menggunakan perintah:
+Jika hasil menunjukkan:
+
+```text
+TcpTestSucceeded : True
+```
+
+berarti koneksi TCP dari Windows menuju port 21 pada server berhasil dijangkau. Pengujian ini memeriksa keterjangkauan port, belum membuktikan login FTP berhasil.
+
+### 4.2 Menguji login ke FTP Server
+
+Jalankan melalui PowerShell:
 
 ```powershell
-curl.exe --user ftpuser -T "$env:USERPROFILE\Documents\uji-windows.txt" ftp://192.168.56.102/upload/uji-windows.txt
+curl.exe -v --user ftpuser ftp://192.168.56.103/
 ```
 
-Kemudian kembali ke terminal CentOS dan periksa apakah file sudah masuk:
+Masukkan kata sandi akun `ftpuser` ketika diminta. Opsi `-v` menampilkan informasi proses komunikasi. Respons `230 Login successful` menunjukkan autentikasi berhasil.
+
+### 4.3 Membuat dan mengirim file teks dari Windows ke CentOS
+
+Buat file teks melalui PowerShell:
+
+```powershell
+"Ini adalah file pengujian FTP tugas 3 Administrasi server." | Set-Content "$env:USERPROFILE\Documents\uji-coba.txt"
+```
+
+Kirim file ke direktori upload server:
+
+```powershell
+curl.exe --user ftpuser -T "$env:USERPROFILE\Documents\uji-coba.txt" ftp://192.168.56.103/upload/uji-coba.txt
+```
+
+Periksa file pada CentOS:
 
 ```bash
 ls -lh /var/www/html/upload/
 ```
 
-Untuk melihat isi file, gunakan:
+Baca isi file:
 
 ```bash
-cat /var/www/html/upload/uji-windows.txt
+cat /var/www/html/upload/uji-coba.txt
 ```
 
-Jika nama dan isi file tampil, berarti pengiriman file dari Windows ke CentOS berhasil.
+### 4.4 Mengirim file foto dari Windows ke CentOS melalui File Explorer
 
-### 4.3 Pengujian File TXT dari CentOS ke Windows
+Pada Windows File Explorer, buka alamat:
 
-Selanjutnya, dilakukan pengujian dari arah sebaliknya, yaitu membuat file pada CentOS dan membacanya melalui Windows.
+```text
+ftp://192.168.56.103/upload/
+```
 
-Buat file teks pada folder upload dengan perintah:
+Pilih file foto dari komputer Windows, kemudian lakukan drag and drop ke direktori `upload` yang terbuka pada File Explorer.
+
+Setelah proses pengiriman, periksa file pada CentOS:
 
 ```bash
-echo "Ini adalah file pengujian FTP yang dibuat di CentOS Stream 10 dan dibaca melalui Windows." > /var/www/html/upload/uji-centos.txt
+ls -lh /var/www/html/upload/
 ```
 
-Atur kepemilikan dan izin file:
+Untuk memeriksa jenis file gambar, gunakan perintah berikut dengan menyesuaikan nama file:
+
+```bash
+file /var/www/html/upload/nama-file-foto.jpg
+```
+
+Ganti `nama-file-foto.jpg` dengan nama file yang benar-benar dikirim.
+
+### 4.5 Membuat file teks di CentOS dan membacanya melalui Windows
+
+Buat file teks pada CentOS:
+
+```bash
+echo "Ini pengujian dari CentOS untuk dibaca diWindows saya." > /var/www/html/upload/uji-centos.txt
+```
+
+Sesuaikan kepemilikan file:
 
 ```bash
 chown ftpuser:ftpuser /var/www/html/upload/uji-centos.txt
-chmod 644 /var/www/html/upload/uji-centos.txt
 ```
 
-Setelah file dibuat, buka PowerShell pada Windows dan jalankan:
-
-```powershell
-curl.exe --user ftpuser ftp://192.168.56.102/upload/uji-centos.txt
-```
-
-Jika isi file muncul di PowerShell, berarti file yang dibuat pada CentOS berhasil dibaca melalui Windows.
-
-### 4.4 Pengujian File Gambar dari Windows ke CentOS
-
-Pengujian terakhir dilakukan dengan mengirimkan file gambar dari Windows ke FTP Server.
-
-Pertama, buka kembali File Explorer dan akses folder FTP:
+Pada Windows File Explorer, buka:
 
 ```text
-ftp://192.168.56.102/upload/
+ftp://192.168.56.103/upload/
 ```
 
-Pilih salah satu gambar yang tersimpan pada Windows, kemudian salin dan tempelkan ke folder upload tersebut.
-
-Setelah proses pengiriman selesai, kembali ke CentOS dan periksa file yang sudah masuk:
-
-```bash
-ls -lh /var/www/html/upload/
-```
-
-Untuk memastikan file dikenali sebagai gambar, jalankan:
-
-```bash
-file /var/www/html/upload/nama-gambar.jpg
-```
-
-Ganti `nama-gambar.jpg` sesuai nama file gambar yang dikirim.
-
-Selanjutnya, buka File Manager CentOS, tekan `Ctrl + L`, lalu masukkan lokasi:
-
-```text
-/var/www/html/upload
-```
-
-Cari gambar yang sudah dikirim dan buka untuk memastikan file dapat dibaca.
+Salin file `uji-centos.txt` dari direktori FTP ke komputer Windows, misalnya ke folder Downloads, kemudian buka file tersebut untuk membaca isinya.
 
 ## 5. Hasil Praktikum
 
-Berdasarkan pengujian yang dilakukan, hasil praktikum yang diperoleh meliputi:
+Hasil praktikum diperoleh melalui pemeriksaan layanan vsftpd, pengujian koneksi jaringan, proses login, serta kegiatan pengiriman dan pengambilan file antara Windows dan CentOS Stream 10.
 
-1. FTP Server dapat dijalankan menggunakan layanan vsftpd pada CentOS Stream 10.
-2. Windows dapat mengakses FTP Server menggunakan akun `ftpuser`.
-3. File TXT dari Windows dapat dikirim dan dibaca pada CentOS.
-4. File TXT yang dibuat pada CentOS dapat dibaca melalui Windows.
-5. File gambar dari Windows dapat dikirim dan dibuka pada CentOS.
+Pengujian meliputi pengiriman file teks dari Windows ke CentOS, pengiriman foto melalui File Explorer, serta pembuatan file teks pada CentOS yang kemudian dibaca melalui Windows. Bukti pengujian dapat ditampilkan melalui keluaran perintah terminal dan tampilan File Explorer.
 
 ## 6. Kesimpulan
 
-Berdasarkan praktikum yang telah dilakukan, instalasi dan konfigurasi FTP Server menggunakan vsftpd pada CentOS Stream 10 berhasil dilaksanakan. Layanan FTP dapat dijalankan dan diakses melalui Windows 11 menggunakan alamat IP server `192.168.56.102`.
+Praktikum ini membahas instalasi dan konfigurasi FTP Server menggunakan vsftpd pada CentOS Stream 10. Agar layanan dapat digunakan, diperlukan konfigurasi vsftpd, akun pengguna, direktori penyimpanan, firewall, hak akses Linux, dan SELinux.
 
-Proses konfigurasi meliputi instalasi layanan, pembuatan akun FTP, pengaturan file konfigurasi vsftpd, pengaturan firewall, pemberian hak akses direktori, serta penyesuaian kebijakan SELinux. Penyesuaian SELinux diperlukan karena sistem menggunakan mode `Enforcing`, sehingga akses layanan terhadap direktori FTP harus disesuaikan dengan kebijakan keamanan yang berlaku.
-
-Hasil pengujian menunjukkan bahwa FTP Server dapat digunakan untuk melakukan pertukaran file. File TXT yang dibuat di Windows dapat dikirim dan dibaca melalui CentOS, sedangkan file TXT yang dibuat pada CentOS dapat dibaca melalui Windows. Pengiriman dan pembukaan file gambar juga dilakukan sebagai bagian dari pengujian.
-
-Dengan demikian, praktikum ini memberikan pemahaman mengenai proses instalasi, konfigurasi, pengamanan, dan pengujian FTP Server pada lingkungan virtualisasi menggunakan CentOS Stream 10.
+Pengujian menggunakan Windows 11 dilakukan untuk melihat proses koneksi, login, pengiriman file dari client ke server, serta pembacaan file yang dibuat pada server melalui client.
 
 ## 7. Penyesuaian Perintah dari Panduan Praktikum
 
-Dalam pelaksanaan praktikum terdapat beberapa penyesuaian karena sistem operasi yang digunakan adalah CentOS Stream 10, sedangkan panduan awal menggunakan CentOS 7.
+Panduan awal menggunakan CentOS 7, sedangkan pelaksanaan praktikum menggunakan CentOS Stream 10. Penyesuaian yang dilakukan meliputi:
 
-Penyesuaian yang dilakukan meliputi:
-
-1. **Pengelolaan paket sistem.** Perintah `dnf` digunakan untuk memperbarui sistem dan menginstal layanan vsftpd karena CentOS Stream 10 menggunakan DNF sebagai pengelola paket.
-2. **Penyesuaian jaringan.** Pemeriksaan dan pengaturan jaringan dilakukan menggunakan NetworkManager. Interface yang digunakan pada VirtualBox adalah `enp0s3` untuk NAT dan `enp0s8` untuk Host-Only.
-3. **Pengaturan firewall.** Selain mengizinkan layanan FTP dan port 21, rentang port 10000–10100 juga diizinkan karena konfigurasi vsftpd menggunakan passive FTP.
-4. **Pengaturan direktori FTP.** Direktori utama `/var/www/html` tetap dimiliki oleh root, sedangkan direktori `/var/www/html/upload` diberikan kepada pengguna `ftpuser` agar dapat digunakan untuk mengirimkan file.
-5. **Penyesuaian SELinux.** Karena SELinux berada dalam mode `Enforcing`, dilakukan penyesuaian konteks keamanan pada direktori utama dan direktori upload agar layanan FTP dapat mengakses direktori sesuai kebijakan keamanan.
-6. **Pengujian transfer file.** Pengujian dilakukan melalui Windows PowerShell dan File Explorer. File TXT diuji dalam dua arah, sedangkan file gambar dikirim melalui File Explorer dan dibuka melalui File Manager CentOS.
-
-Penyesuaian tersebut dilakukan agar konfigurasi FTP dapat berjalan pada CentOS Stream 10 dan tujuan praktikum tetap dapat tercapai.
+1. **Pengelolaan paket sistem:** menggunakan `dnf` untuk memperbarui sistem dan menginstal vsftpd.
+2. **Penyesuaian jaringan:** pemeriksaan jaringan dilakukan dengan melihat interface `enp0s3` untuk NAT dan `enp0s8` untuk Host-Only.
+3. **Pengaturan firewall:** mengizinkan layanan FTP, port 21, dan rentang port 10000–10100 untuk passive mode.
+4. **Pengaturan direktori FTP:** direktori utama `/var/www/html` tetap dimiliki root, sedangkan direktori `/var/www/html/upload` diberikan kepada `ftpuser`.
+5. **Penyesuaian SELinux:** mempertahankan SELinux dalam mode `Enforcing` dan menggunakan konteks keamanan yang sesuai. Aturan `semanage fcontext` tidak dibuat ulang karena telah tersedia dari konfigurasi sebelumnya.
+6. **Pengujian transfer file:** menggunakan Windows PowerShell dan File Explorer. File TXT diuji dalam dua arah, sedangkan file gambar dikirim melalui File Explorer dan diperiksa pada CentOS.
 
 ## Daftar Pustaka
 
 Arifin, Z. (2026). *Administrasi Server (MSIM4308, Edisi 1, Cetakan ke-12).* Tangerang Selatan: Universitas Terbuka.
 
-Red Hat. (2025). *Securing networks: Securing the FTP service*. Red Hat Enterprise Linux 10 Documentation.  
-https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/securing_networks/securing-network-services
+Red Hat. (2025). *Securing networks: Securing the FTP service.* Red Hat Enterprise Linux 10 Documentation. https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/securing_networks/securing-network-services
